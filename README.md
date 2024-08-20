@@ -42,6 +42,4 @@ Long Range Wide Area Network (LoRaWAN), a Low Power Wide Area Network (LPWAN) te
 * numpy 1.26.0
 * pandas 2.1.4
 
-### Paper published
-
-Acosta-Garcia, Laura, et al. "Dynamic transmission policy for enhancing LoRa network performance: A deep reinforcement learning approach." Internet of Things 24 (2023): 100974.
+# 
