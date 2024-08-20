@@ -18,10 +18,10 @@ Hong Yang, Haibo Luo*, Chao Feng. "HEAT: Optimizing LoRaWAN via Comprehensive Mo
 * matplotlib 3.7.2
 * numpy 1.26.0
 * pandas 2.1.4
-
-
-
-
+  
+  
+  
+  
 
 # HEAT: Optimizing LoRaWAN via Comprehensive Modeling and A Deep Reinforcement Learning Resource Allocation Strategy
 
@@ -45,5 +45,3 @@ Long Range Wide Area Network (LoRaWAN), a Low Power Wide Area Network (LPWAN) te
 ### Paper published
 
 Acosta-Garcia, Laura, et al. "Dynamic transmission policy for enhancing LoRa network performance: A deep reinforcement learning approach." Internet of Things 24 (2023): 100974.
-
-
