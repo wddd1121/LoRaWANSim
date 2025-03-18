@@ -427,7 +427,6 @@ class EN:
         self.rho = rho / (60.0 * 1000.0)  # 次/分钟 ->  次/毫秒
         self.env = env
         self.loraEnv: LoRaEnv = loraEnv
-        self.logConfig = loraEnv.logConfig.ENs[id]
 
         self.rng_base = np.random.default_rng(self._id + loraEnv.param['seed'])
         self.rng_channel = np.random.default_rng(self.rng_base.integers(0, 2**63))
@@ -568,10 +567,7 @@ class EN:
         self.logTable = pt.PrettyTable()
         self.logTable.set_style(pt.SINGLE_BORDER)
         self.logFilename = self.loraEnv.root + 'log_EN/EN{}.txt'.format(id)
-        if (not np.any(self.logConfig[0])) or self.logConfig[1][0] == 3:
-            self.logFile = None
-        else:
-            self.logFile = openFile(self.logFilename, 'w')
+
 
         self.pac = Packet(self, None, env, loraEnv)
 
@@ -607,23 +603,13 @@ class EN:
                 ACK = None
 
                 self.strategy.EN_initUplink(self)
-                if self.judgePrint('TXRX', self.logConfig):
-                    logAppend('EN' + str(self.id), self.pac.packetNum)
-                    logAppend(
-                        'CH{}'.format(self.pac.tx_channel),
-                        'SF{}'.format(self.pac.tx_sf),
-                    )
-                    logAppend(
-                        '{}mw'.format(self.pac.tx_pow),
-                        '{}bytes'.format(self.pac.payload),
-                    )
+
 
                 # 开始发射前4个symbol
                 t1 = env.now
                 self.status = 0
                 send_pre(self.pac, self.loraEnv)
-                if self.judgePrint('TXRX', self.logConfig):
-                    logAppend(env.now, 'TX(' + str(self.pac.TOA) + ')')
+
                 yield esp.extendTimeout(
                     env,
                     self.pac.TOA_4SymbolTime,
@@ -673,8 +659,7 @@ class EN:
 
                 try:
                     self.status = 3
-                    if self.judgePrint('TXRX', self.logConfig):
-                        logAppend(env.now, 'D1(' + str(self.rx1_delay) + ')')
+
                     yield esp.extendTimeout(
                         env,
                         self.rx1_delay,
@@ -684,13 +669,7 @@ class EN:
                     )
 
                     self.status = 1
-                    if self.judgePrint('TXRX', self.logConfig):
-                        logAppend(
-                            env.now,
-                            'W1({},CH{},SF{})'.format(
-                                self.rx_size, self.pac.rx1_channel, self.pac.rx1_sf
-                            ),
-                        )
+
                     yield esp.extendTimeout(
                         env,
                         self.rx_size,
@@ -700,10 +679,7 @@ class EN:
                     )
 
                     self.status = 3
-                    if self.judgePrint('TXRX', self.logConfig):
-                        logAppend(
-                            env.now, 'D2(' + str(self.rx2_delay - self.rx_size) + ')'
-                        )
+
                     yield esp.extendTimeout(
                         env,
                         self.rx2_delay - self.rx_size,
@@ -713,13 +689,7 @@ class EN:
                     )
 
                     self.status = 1
-                    if self.judgePrint('TXRX', self.logConfig):
-                        logAppend(
-                            env.now,
-                            'W2({},CH{},SF{})'.format(
-                                self.rx_size, self.pac.rx2_channel, self.pac.rx2_sf
-                            ),
-                        )
+
                     yield esp.extendTimeout(
                         env,
                         self.rx_size,
@@ -733,8 +703,7 @@ class EN:
                             self.id, self.pac.packetNum
                         )
 
-                    if self.judgePrint('TXRX', self.logConfig):
-                        logAppend('', 'NO ACK')
+
                     self.ACK_Status = 2
                 except sp.Interrupt as i:
                     ACK = i.cause
@@ -755,11 +724,7 @@ class EN:
                             )
 
                             self.status = 3
-                            if self.judgePrint('TXRX', self.logConfig):
-                                logAppend(
-                                    env.now,
-                                    'D2(' + str(self.rx2_delay - self.rx_size) + ')',
-                                )
+
                             yield esp.extendTimeout(
                                 env,
                                 self.rx2_delay - self.rx_size,
@@ -769,15 +734,7 @@ class EN:
                             )
 
                             self.status = 1
-                            if self.judgePrint('TXRX', self.logConfig):
-                                logAppend(
-                                    env.now,
-                                    'W2({},CH{},SF{})'.format(
-                                        self.rx_size,
-                                        self.pac.rx2_channel,
-                                        self.pac.rx2_sf,
-                                    ),
-                                )
+
                             yield esp.extendTimeout(
                                 env,
                                 self.rx_size,
@@ -798,15 +755,7 @@ class EN:
                             )
 
                             self.status = 1
-                            if self.judgePrint('TXRX', self.logConfig):
-                                logAppend(
-                                    env.now,
-                                    'W2({},CH{},SF{})'.format(
-                                        self.rx_size,
-                                        self.pac.rx2_channel,
-                                        self.pac.rx2_sf,
-                                    ),
-                                )
+
                             yield esp.extendTimeout(
                                 env,
                                 self.rx_size,
@@ -828,29 +777,8 @@ class EN:
                         else:
                             # 当前在w2之后
                             pass
-                        if self.judgePrint('TXRX', self.logConfig):
-                            logAppend('', 'NO ACK')
                     else:
-                        # 已经占用解调器
-                        # 日志中的时间要进行修正
-                        if self.judgePrint('TXRX', self.logConfig):
-                            if log2[len(log2) - 1].startswith('W1'):
-                                log2[len(log2) - 1] = 'W1({},CH{},SF{})'.format(
-                                    env.now - ACK.TOA_4SymbolTime - log1[len(log1) - 1],
-                                    self.pac.rx1_channel,
-                                    self.pac.rx1_sf,
-                                )
-                            else:
-                                log2[len(log2) - 1] = 'W2({},CH{},SF{})'.format(
-                                    env.now - ACK.TOA_4SymbolTime - log1[len(log1) - 1],
-                                    self.pac.rx2_channel,
-                                    self.pac.rx2_sf,
-                                )
-
-                            logAppend(
-                                env.now - ACK.TOA_4SymbolTime,
-                                'Get(' + str(ACK.TOA) + ')',
-                            )
+                        pass
 
                         self.status = 2
                         yield self.event_ACK_end
@@ -860,31 +788,17 @@ class EN:
                         c3 = ACK.conditionsToGWs[3][ACK.sender.id]
 
                         if c1 and c2 and c3:
-                            if self.judgePrint('TXRX', self.logConfig):
-                                logAppend('GW' + str(ACK.sender.id), 'ACK')
                             self.ACK_Status = 0
                         else:
-                            if self.judgePrint('TXRX', self.logConfig):
-                                logAppend(
-                                    '{}{}{}'.format(int(c1), int(c2), int(c3)),
-                                    'up_demFail',
-                                )
                             self.ACK_Status = 1
                 self.status = 3
                 t2 = env.now
                 rho_p = self.rho / (1 - self.rho * (t2 - t1))
                 self.sleeptime = int(self.rng_sleep.exponential(scale=1 / rho_p))
-                if self.judgePrint('TXRX', self.logConfig):
-                    logAppend(env.now, 'sleep(' + str(self.sleeptime) + ')')
-                    self.logPrint(log1, log2)  # 打印TX和RX的信息
 
                 res = self.strategy.EN_dispatch(self, ACK, self.ACK_Status)
-                if res is not None:
-                    if self.judgePrint('dispatch', self.logConfig):
-                        self.logPrint(res[0], res[1])  # 打印dispatch的信息
 
                 self.statDetail(self.pac, ACK)  # 统计历史数据
-                self.printDetail()  # 打印历史数据
                 self.status = 3
                 yield esp.extendTimeout(
                     env,
@@ -921,260 +835,6 @@ class EN:
         self.logTable.add_row(log2)
         self.logFile.write(self.logTable.__str__() + '\n')
 
-    # 打印 当前报文在每个网关的信息 以及 每个网关处的历史数据
-    def printDetail(self):
-        if not self.judgePrint('detail', self.logConfig):
-            return
-
-        self.logTable.clear()
-        title = ['time:{:.2f}min'.format(self.env.now / minute)]
-        for i in range(self.loraEnv.GW_num):
-            title.append('GW' + str(i))
-        self.logTable.field_names = title
-        info0 = ['distance']
-
-        c0 = ['rssi ratio']
-        c1 = ['sinr ratio(c1)']
-        c2 = ['strongest(c2)']
-        c3 = ['demodulator(c3)']
-        ts = ['demodulator info']
-
-        stat = ['statistics']
-        for i in range(self.loraEnv.GW_num):
-            info0.append(
-                '{:.3f}({:.2e})'.format(
-                    self.loraEnv.distance[self._id][self.loraEnv.GWs[i]._id],
-                    self.loraEnv.pathloss[self._id][self.loraEnv.GWs[i]._id],
-                )
-            )
-
-            c0.append(
-                '{:.2f}({:.2f} * pl = {:.2f})'.format(
-                    self.loraEnv.rssi[self._id][self.loraEnv.GWs[i]._id]
-                    / self.loraEnv.RSSI_GW_threshold[self.pac.tx_sf],
-                    self.pac.channelGain,
-                    self.pac.channelGain
-                    * self.loraEnv.pathloss[self._id][self.loraEnv.GWs[i]._id],
-                )
-            )
-            c1.append(
-                '{:.2f}({:.2e} + {:.2e} = {:.2e}  {:.2f})'.format(
-                    self.pac.sinrToGWs[i] / self.loraEnv.SINR_threshold[self.pac.tx_sf],
-                    self.pac.noiseToGWs[i],
-                    self.pac.interferenceToGWs[i],
-                    self.pac.noiseToGWs[i] + self.pac.interferenceToGWs[i],
-                    (self.pac.noiseToGWs[i] + self.pac.interferenceToGWs[i])
-                    / (
-                        self.loraEnv.rssi[self._id][self.loraEnv.GWs[i]._id]
-                        / self.loraEnv.SINR_threshold[self.pac.tx_sf]
-                    ),
-                )
-            )
-            c2.append(self.pac.conditionsToGWs[2][i])
-            c3.append(self.pac.conditionsToGWs[3][i])
-            ts.append(
-                '{}{}{}{}{}'.format(
-                    int(self.pac.conditionsToGWs[0][i]),
-                    int(self.pac.c3_strongestToGWs[i]),
-                    int(self.pac.c3_early1ToGWs[i]),
-                    int(self.pac.c3_early2ToGWs[i]),
-                    int(self.pac.c3_freeDemToGWs[i]),
-                )
-            )
-
-            stat0 = []
-            stat1 = []
-            stat2 = []
-            stat3 = []
-            stat4 = []
-            stat5 = []
-
-            # column1
-            stat0.append(
-                '{}({:.0%})'.format(
-                    self.up_demSuccessToGWs[i],
-                    self.up_demSuccessToGWs[i] / self.up_sentNum,
-                )
-            )
-
-            if self.up_demSuccessToGWs[i] > 0:
-                stat1.append(
-                    '{}({:.0%})[success]'.format(
-                        self.ack_demSuccessToGWs[i],
-                        self.ack_demSuccessToGWs[i] / self.up_demSuccessToGWs[i],
-                    )
-                )
-                stat2.append(
-                    '{}({:.0%})[DemFail]'.format(
-                        self.ack_demFailToGWs[i],
-                        self.ack_demFailToGWs[i] / self.up_demSuccessToGWs[i],
-                    )
-                )
-                stat3.append(
-                    '{}({:.0%})[NoDem]'.format(
-                        self.ack_noDemToGWs[i],
-                        self.ack_noDemToGWs[i] / self.up_demSuccessToGWs[i],
-                    )
-                )
-                stat4.append(
-                    '{}({:.0%})[not me]'.format(
-                        self.ack_notMeToGWs[i],
-                        self.ack_notMeToGWs[i] / self.up_demSuccessToGWs[i],
-                    )
-                )
-                stat5.append(
-                    '{}({:.0%})[no ack]'.format(
-                        self.ack_noAckToGWs[i],
-                        self.ack_noAckToGWs[i] / self.up_demSuccessToGWs[i],
-                    )
-                )
-
-            else:
-                stat1.append(str(self.ack_demSuccessToGWs[i]) + '[success]')
-                stat2.append(str(self.ack_demFailToGWs[i]) + '[DemFail]')
-                stat3.append(str(self.ack_noDemToGWs[i]) + '[NoDem]')
-                stat4.append(str(self.ack_notMeToGWs[i]) + '[not me]')
-                stat5.append(str(self.ack_noAckToGWs[i]) + '[no ack]')
-
-            # column2
-            stat0.append(
-                '{}({:.0%})'.format(
-                    self.up_demFailToGWs[i], self.up_demFailToGWs[i] / self.up_sentNum
-                )
-            )
-            if self.up_demFailToGWs[i] > 0:
-                stat1.append(
-                    '{}({:.0%})[sinr]'.format(
-                        self.up_demFailC1ToGWs[i],
-                        self.up_demFailC1ToGWs[i] / self.up_demFailToGWs[i],
-                    )
-                )
-                stat2.append(
-                    '{}({:.0%})[4 times]'.format(
-                        self.up_demFailC2ToGWs[i],
-                        self.up_demFailC2ToGWs[i] / self.up_demFailToGWs[i],
-                    )
-                )
-            else:
-                stat1.append(str(self.up_demFailC1ToGWs[i]) + '[sinr]')
-                stat2.append(str(self.up_demFailC2ToGWs[i]) + '[4 times]')
-            stat3.append('')
-            stat4.append('')
-            stat5.append('')
-
-            # column3
-            stat0.append(
-                '{}({:.0%})'.format(
-                    self.up_noDemToGWs[i], self.up_noDemToGWs[i] / self.up_sentNum
-                )
-            )
-            if self.up_noDemToGWs[i] > 0:
-                stat1.append(
-                    '{}({:.0%})[rssi]'.format(
-                        self.up_noDemStrongestToGWs[i],
-                        self.up_noDemStrongestToGWs[i] / self.up_noDemToGWs[i],
-                    )
-                )
-                stat2.append(
-                    '{}({:.0%})[late1]'.format(
-                        self.up_noDemEarly1ToGWs[i],
-                        self.up_noDemEarly1ToGWs[i] / self.up_noDemToGWs[i],
-                    )
-                )
-                stat3.append(
-                    '{}({:.0%})[late2]'.format(
-                        self.up_noDemEarly2ToGWs[i],
-                        self.up_noDemEarly2ToGWs[i] / self.up_noDemToGWs[i],
-                    )
-                )
-                stat4.append(
-                    '{}({:.0%})[no dem]'.format(
-                        self.up_noDemFreeDemToGWs[i],
-                        self.up_noDemFreeDemToGWs[i] / self.up_noDemToGWs[i],
-                    )
-                )
-            else:
-                stat1.append(str(self.up_noDemStrongestToGWs[i]) + '[rssi]')
-                stat2.append(str(self.up_noDemEarly1ToGWs[i]) + '[late1]')
-                stat3.append(str(self.up_noDemEarly2ToGWs[i]) + '[late2]')
-                stat4.append(str(self.up_noDemFreeDemToGWs[i]) + '[no dem]')
-            stat5.append('')
-
-            # column4
-            stat0.append('{}'.format(self.ack_demFailToGWs[i]))
-            if self.ack_demFailToGWs[i] > 0:
-                stat1.append(
-                    '{}({:.0%})[sinr]'.format(
-                        self.ack_demFailC1ToGWs[i],
-                        self.ack_demFailC1ToGWs[i] / self.ack_demFailToGWs[i],
-                    )
-                )
-                stat2.append(
-                    '{}({:.0%})[4 times]'.format(
-                        self.ack_demFailC2ToGWs[i],
-                        self.ack_demFailC2ToGWs[i] / self.ack_demFailToGWs[i],
-                    )
-                )
-            else:
-                stat1.append(str(self.ack_demFailC2ToGWs[i]) + '[sinr]')
-                stat2.append(str(self.ack_demFailC2ToGWs[i]) + '[4 times]')
-            stat3.append('')
-            stat4.append('')
-            stat5.append('')
-
-            # column5
-            stat0.append('{}'.format(self.ack_noDemToGWs[i]))
-            if self.ack_noDemToGWs[i] > 0:
-                stat1.append(
-                    '{}({:.0%})[rssi]'.format(
-                        self.ack_noDemStrongestToGWs[i],
-                        self.ack_noDemStrongestToGWs[i] / self.ack_noDemToGWs[i],
-                    )
-                )
-                stat2.append(
-                    '{}({:.0%})[late1]'.format(
-                        self.ack_noDemEarly1ToGWs[i],
-                        self.ack_noDemEarly1ToGWs[i] / self.ack_noDemToGWs[i],
-                    )
-                )
-                stat3.append(
-                    '{}({:.0%})[late2]'.format(
-                        self.ack_noDemEarly2ToGWs[i],
-                        self.ack_noDemEarly2ToGWs[i] / self.ack_noDemToGWs[i],
-                    )
-                )
-            else:
-                stat1.append(str(self.ack_noDemStrongestToGWs[i]) + '[rssi]')
-                stat2.append(str(self.ack_noDemEarly1ToGWs[i]) + '[late1]')
-                stat3.append(str(self.ack_noDemEarly2ToGWs[i]) + '[late2]')
-            stat4.append('')
-            stat5.append('')
-
-            innerTable = pt.PrettyTable()
-            innerTable.set_style(pt.SINGLE_BORDER)
-            innerTable.field_names = [
-                'up DemSuccess',
-                'up DemFail',
-                'up noDem',
-                'ACK DemFail',
-                'ACK noDem',
-            ]
-            innerTable.add_row(stat0, divider=True)
-            innerTable.add_rows([stat1, stat2, stat3, stat4, stat5])
-            stat.append(innerTable.get_string())
-
-        self.logTable.add_row(info0, divider=True)
-
-        self.logTable.add_row(c0)
-        self.logTable.add_row(c1)
-        self.logTable.add_row(c2)
-        self.logTable.add_row(c3)
-        self.logTable.add_row(ts, divider=True)
-        self.logTable.add_row(stat)
-
-        log = self.logTable.__str__() + '\n'
-
-        self.logFile.write(log)
 
     # 统计历史数据
     def statDetail(self, uplink: Packet, ACK: Packet):
@@ -1465,7 +1125,6 @@ class GW:
         self.y = y
         self.env = env
         self.loraEnv = loraEnv
-        self.logConfig = loraEnv.logConfig.GWs[id]
 
         self.rng_base = np.random.default_rng(self._id + loraEnv.param['seed'])
         self.rng_nosie = np.random.default_rng(self.rng_base.integers(0, 2**63))
@@ -1574,29 +1233,13 @@ class GW:
                 c3 = uplink.conditionsToGWs[3][self.id]
 
                 if c3:
-                    if self.judgePrint('RX', self.logConfig):
-                        logAppend('GW' + str(self.id), '')
-                        logAppend(uplink.timepoint_tx, 'Get(' + str(uplink.TOA) + ')')
 
                     if c1 and c2:
                         self.demodulatorWorkTime_demSuccess += uplink.TOA
-                        if self.judgePrint('RX', self.logConfig):
-                            logAppend(
-                                '',
-                                'EN{}-{}'.format(uplink.sender.id, uplink.packetNum),
-                            )
-                            self.logPrint(log1, log2, self.logFile)
                     else:
                         self.demodulatorWorkTime_demFail += uplink.TOA
-                        if self.judgePrint('RX', self.logConfig):
-                            logAppend(
-                                'up_demFail({}{}{})'.format(int(c1), int(c2), int(c3)),
-                                'EN{}-{}'.format(uplink.sender.id, uplink.packetNum),
-                            )
-                            self.logPrint(log1, log2, self.logFile)
 
                 self.statDetail_RX(uplink)
-                self.printDetail()
         except Exception as e:
             self.logFile.close()
             raise e
@@ -1636,17 +1279,6 @@ class GW:
             self.calculateRssi(ACK)
             send_pre(ACK, self.loraEnv)
 
-            if self.judgePrint('TX', self.logConfig):
-                logAppend(
-                    'GW{}'.format(self.id),
-                    'EN{}-{}'.format(ACK.receiver.id, ACK.packetNum),
-                )
-                logAppend('CH{}'.format(ACK.tx_channel), 'SF{}'.format(ACK.tx_sf))
-                logAppend('{}mw'.format(ACK.tx_pow), '{}bytes'.format(ACK.payload))
-                logAppend(
-                    env.now,
-                    'TX(' + str(ACK.TOA) + ')',
-                )
 
             # 开始前4个符号
             if ACK.conditionsToGWs[0][self.id]:
@@ -1692,11 +1324,7 @@ class GW:
             )
 
             self.updateEvent()
-            if self.judgePrint('TX', self.logConfig):
-                self.logPrint(log1, log2, self.logFile)  # 打印该ACK的时间信息
-            self.ACKPrint(ACK, self.logFile)  # 打印该ACK的详细信息
             self.statDetail_TX(ACK)  # 更新历史数据
-            self.printDetail()  # 打印历史数据
         except Exception as e:
             self.logFile.close()
             raise e
@@ -1839,68 +1467,7 @@ class GW:
 
             self.event_downlink_start.callbacks.append(fun)
 
-    # 打印该ACK的详细信息
-    def ACKPrint(self, ACK: Packet, logFile):
-        if not self.judgePrint('TX', self.logConfig):
-            return
-
-        self.logTable.clear()
-        title = [
-            'distance',
-            'rssi ratio',
-            'sinr ratio(c1)',
-            'strongest(c2)',
-            'demodulator(c3)',
-            'demodulator info',
-        ]
-        self.logTable.field_names = title
-        row = []
-        row.append(
-            '{:.3f}'.format(self.loraEnv.distance[self._id][ACK.receiver._id])
-            + '({:.2e})'.format(self.loraEnv.pathloss[self._id][ACK.receiver._id])
-        )
-
-        row.append(
-            '{:.2f}'.format(
-                self.loraEnv.rssi[ACK.sender._id][ACK.receiver._id]
-                / self.loraEnv.RSSI_GW_threshold[ACK.tx_sf]
-            )
-            + '({:.2f}'.format(ACK.channelGain)
-            + '*pl='
-            + '{:.2f})'.format(
-                ACK.channelGain * self.loraEnv.pathloss[self._id][ACK.receiver._id]
-            )
-        )
-        row.append(
-            '{:.2f}'.format(
-                ACK.sinrToGWs[self.id] / self.loraEnv.SINR_threshold[ACK.tx_sf]
-            )
-            + '('
-            + '{:.2f}'.format(
-                (ACK.noiseToGWs[self.id] + ACK.interferenceToGWs[self.id])
-                / (
-                    self.loraEnv.rssi[ACK.sender._id][ACK.receiver._id]
-                    / self.loraEnv.SINR_threshold[ACK.tx_sf]
-                )
-            )
-            + ')'
-        )
-        row.append(ACK.conditionsToGWs[2][self.id])
-        row.append(ACK.conditionsToGWs[3][self.id])
-        row.append(
-            '{}{}{}{}{}'.format(
-                int(ACK.conditionsToGWs[0][self.id]),
-                int(ACK.c3_strongestToGWs[self.id]),
-                int(ACK.c3_early1ToGWs[self.id]),
-                int(ACK.c3_early2ToGWs[self.id]),
-                int(ACK.c3_freeDemToGWs[self.id]),
-            )
-        )
-        self.logTable.add_row(row)
-
-        log = self.logTable.__str__() + '\n'
-        logFile.write(log)
-
+ 
     def statDetail_RX(self, uplink):
         c1 = uplink.conditionsToGWs[1][self.id]
         c2 = uplink.conditionsToGWs[2][self.id]
@@ -1959,242 +1526,6 @@ class GW:
                 if not ACK.conditionsToGWs[2][self.id]:
                     self.ack_demFailC2 += 1
 
-    # 打印该网关的历史统计信息
-    def printDetail(self):
-
-        self.demodulatorWorkTime_free = (
-            (self.env.now * 8)
-            - self.demodulatorWorkTime_demSuccess
-            - self.demodulatorWorkTime_demFail
-        )
-
-        self.demodulatorWorkTime_free_ratio = self.demodulatorWorkTime_free / (
-            self.env.now * 8
-        )
-        self.demodulatorWorkTime_demSuccess_ratio = (
-            self.demodulatorWorkTime_demSuccess / (self.env.now * 8)
-        )
-        self.demodulatorWorkTime_demFail_ratio = self.demodulatorWorkTime_demFail / (
-            self.env.now * 8
-        )
-
-        if not self.judgePrint('detail', self.logConfig):
-            return
-
-        t = pt.PrettyTable()
-        t.set_style(pt.SINGLE_BORDER)
-
-        t.title = 'time: {:.2f}min'.format(
-            self.env.now / minute,
-        )
-
-        t.field_names = [
-            'demWorkCount',
-            'demFreeTime',
-            'demSuccessTime',
-            'demFailTime',
-            'freeDemNum',
-            '',
-            ' ',
-        ]
-        t.add_row(
-            [
-                self.demWorkCount,
-                '{:.2%}'.format(self.demodulatorWorkTime_free_ratio),
-                '{:.2%}'.format(self.demodulatorWorkTime_demSuccess_ratio),
-                '{:.2%}'.format(self.demodulatorWorkTime_demFail_ratio),
-                self.demodulatorNum,
-                '',
-                '',
-            ],
-            divider=True,
-        )
-
-        t.add_row(
-            [
-                'ACK DemSuccess',
-                'ACK DemFail',
-                'ACK noDem',
-                'up DemFail',
-                'up noDem',
-                'not me |  noACK',
-                'ACK miss',
-            ],
-            divider=True,
-        )
-
-        t.add_row(
-            [
-                (
-                    str(self.ack_demSuccess)
-                    if self.demWorkCount == 0
-                    else '{}({:.0%}) '.format(
-                        self.ack_demSuccess, self.ack_demSuccess / self.demWorkCount
-                    )
-                ),
-                (
-                    str(self.ack_demFail)
-                    if self.demWorkCount == 0
-                    else '{}({:.0%})'.format(
-                        self.ack_demFail, self.ack_demFail / self.demWorkCount
-                    )
-                ),
-                (
-                    str(self.ack_noDem)
-                    if self.demWorkCount == 0
-                    else '{}({:.0%})'.format(
-                        self.ack_noDem, self.ack_noDem / self.demWorkCount
-                    )
-                ),
-                (
-                    str(self.up_demFail)
-                    if self.demWorkCount == 0
-                    else '{}({:.0%})'.format(
-                        self.up_demFail, self.up_demFail / self.demWorkCount
-                    )
-                ),
-                str(self.up_noDem),
-                (
-                    str(self.ack_notMe) + ' | ' + str(self.ack_noACK)
-                    if self.demWorkCount == 0
-                    else '{}({:.0%}) | {}({:.0%})'.format(
-                        self.ack_notMe,
-                        self.ack_notMe / self.demWorkCount,
-                        self.ack_noACK,
-                        self.ack_noACK / self.demWorkCount,
-                    )
-                ),
-                (
-                    str(self.ack_miss)
-                    if self.demWorkCount == 0
-                    else '{}({:.0%})'.format(
-                        self.ack_miss,
-                        self.ack_miss / self.demWorkCount,
-                    )
-                ),
-            ],
-            divider=True,
-        )
-
-        t.add_row(
-            [
-                '',
-                (
-                    str(self.ack_demFailC1) + '[sinr]'
-                    if self.ack_demFail == 0
-                    else '{}({:.0%})[sinr]'.format(
-                        self.ack_demFailC1, self.ack_demFailC1 / self.ack_demFail
-                    )
-                ),
-                (
-                    str(self.ack_noDemStrongest) + '[rssi]'
-                    if self.ack_noDem == 0
-                    else '{}({:.0%})[rssi]'.format(
-                        self.ack_noDemStrongest,
-                        self.ack_noDemStrongest / self.ack_noDem,
-                    )
-                ),
-                (
-                    str(self.up_demFailC1) + '[sinr]'
-                    if self.up_demFail == 0
-                    else '{}({:.0%})[sinr]'.format(
-                        self.up_demFailC1,
-                        self.up_demFailC1 / self.up_demFail,
-                    )
-                ),
-                (
-                    str(self.up_noDemStrongest) + '[rssi]'
-                    if self.up_noDem == 0
-                    else '{}({:.0%})[rssi]'.format(
-                        self.up_noDemStrongest,
-                        self.up_noDemStrongest / self.up_noDem,
-                    )
-                ),
-                '',
-                '',
-            ]
-        )
-        t.add_row(
-            [
-                '',
-                (
-                    str(self.ack_demFailC2) + '[4 times]'
-                    if self.ack_demFail == 0
-                    else '{}({:.0%})[4 times]'.format(
-                        self.ack_demFailC2, self.ack_demFailC2 / self.ack_demFail
-                    )
-                ),
-                (
-                    str(self.ack_noDemEarly1) + '[late1]'
-                    if self.ack_noDem == 0
-                    else '{}({:.0%})[late1]'.format(
-                        self.ack_noDemEarly1, self.ack_noDemEarly1 / self.ack_noDem
-                    )
-                ),
-                (
-                    str(self.up_demFailC2) + '[4 times]'
-                    if self.up_demFail == 0
-                    else '{}({:.0%})[4 times]'.format(
-                        self.up_demFailC2,
-                        self.up_demFailC2 / self.up_demFail,
-                    )
-                ),
-                (
-                    str(self.up_noDemEarly1) + '[late1]'
-                    if self.up_noDem == 0
-                    else '{}({:.0%})[late1]'.format(
-                        self.up_noDemEarly1,
-                        self.up_noDemEarly1 / self.up_noDem,
-                    )
-                ),
-                '',
-                '',
-            ]
-        )
-        t.add_row(
-            [
-                '',
-                '',
-                (
-                    str(self.ack_noDemEarly2) + '[late2]'
-                    if self.ack_noDem == 0
-                    else '{}({:.0%})[late2]'.format(
-                        self.ack_noDemEarly2, self.ack_noDemEarly2 / self.ack_noDem
-                    )
-                ),
-                '',
-                (
-                    str(self.up_noDemEarly2) + '[late2]'
-                    if self.up_noDem == 0
-                    else '{}({:.0%})[late2]'.format(
-                        self.up_noDemEarly2,
-                        self.up_noDemEarly2 / self.up_noDem,
-                    )
-                ),
-                '',
-                '',
-            ]
-        )
-
-        t.add_row(
-            [
-                '',
-                '',
-                '',
-                '',
-                (
-                    str(self.up_noDemFreeDem) + '[no dem]'
-                    if self.up_noDem == 0
-                    else '{}({:.0%})[no dem]'.format(
-                        self.up_noDemFreeDem,
-                        self.up_noDemFreeDem / self.up_noDem,
-                    )
-                ),
-                '',
-                '',
-            ]
-        )
-        self.logFile.write(t.__str__() + '\n')
 
     # 接收机噪声
     def updateNoise(self, env: sp.Environment):
@@ -2346,7 +1677,6 @@ class LoRaEnv:
             self.successProbabilityFile,
         ]
 
-        self.logConfig = self.logConfigObj(self)
 
         # 创建NS和GW
         self.ns: NS = NS(self.env, self)
@@ -2400,8 +1730,6 @@ class LoRaEnv:
 
         self.log_data_init()
         self.data = self.networkData(self)
-        self.monitor = self.networkMonitor(self.env, self, self.data)
-        self.plotter = self.networkPlotter(self.env, self, self.data)
 
         self.algorithm_runtime = 0
         self.environment_runtime = 0
@@ -2636,30 +1964,12 @@ class LoRaEnv:
         if self.have_pbar:
             self.pbar.close()
 
-        if self.isPaint:
-            self.plotter.initData()
-            self.plotter.plotFig1()
 
         if not self.is_multiprocess:
             for log in self.group_log:
                 print(log)
             print()
 
-        # 直接将关键的信息以文件名的形式呈现
-        self.monitor.index_time[0].append(self.data.enData.up_demSuccess[0][-1])
-        self.monitor.index_time[1].append(self.data.enData.up_demFail[0][-1])
-        self.monitor.index_time[2].append(self.data.enData.up_noDem[0][-1])
-        index_file_name = ['0_up_demSuccess=', '1_up_demFail=', '2_up_noDem=']
-        self.final_succes_rate = self.data.enData.up_demSuccess[0][-1]
-
-        for i, name in enumerate(index_file_name):
-            file_name = self.root + name
-            for item in self.monitor.index_time[i]:
-                file_name += ' {:.2%}'.format(item)
-
-            file_name += '.txt'
-
-            openFile(file_name, 'w').close()
 
         old_root = self.root[0:-1]
 
@@ -2693,708 +2003,14 @@ class LoRaEnv:
 
         esp.deleteEvent(self.env, self.stopEvent)
 
-        if self.env.now <= self.monitor.monitoringCycle:
-            self.stopEvent = self.env.timeout(self.monitor.monitoringCycle + 1)
 
-            def stopFun(event):
-                self.stop = True
-
-            self.stopEvent.callbacks.append(stopFun)
-        else:
-            self.stop = True
-
-    class logConfigObj:
-        def __init__(self, loraEnv) -> None:
-            # 打印内容 ENs[i][0]:[是否输出TX和RX的详情,是否输出调度信息,是否输出EN在每个网关的历史数据]
-            # 打印时机 ENs[i][1]:[0]/[1, startTime,endTime]/[2, startPacketNum,endPacketNum]/[3]
-            # 0:输出所有  3:不输出
-            self.ENs = [None] * loraEnv.EN_num
-            # 打印内容 GWs[i][0]:[是否输出TX的详情,是否输出RX的详情,是否输出本网关的历史数据]
-            # 打印时机 GWs[i][1]:[0]/[1, startTime,endTime]/[2, startPacketNum,endPacketNum]
-            self.GWs = [None] * loraEnv.GW_num
-            for i in range(loraEnv.EN_num):
-                self.ENs[i] = [
-                    [False, False, True],
-                    [3],
-                    # [1, loraEnv.runtime * 0.98, loraEnv.runtime * 1.05],
-                ]
-            for i in range(loraEnv.GW_num):
-                self.GWs[i] = [
-                    [False, False, True],
-                    [3],
-                    # [1, loraEnv.runtime * 0.98, loraEnv.runtime * 1.05],
-                ]
-
-    class networkData:
-        def __init__(self, loraEnv) -> None:
-            self.loraEnv = loraEnv
-            self.times = []
-
-            self.EN_Data()
-
-        def EN_Data(self):
-            self.enData = SimpleNamespace()
-
-            # fig1的数据
-            self.enData.up_demSuccess = [[], [], []]
-            self.enData.up_demFail = [[], [], []]
-            self.enData.up_noDem = [[], [], []]
-
-            self.enData.ack_demSuccess = [[], [], []]
-            self.enData.ack_demFail = [[], [], []]
-            self.enData.ack_noAck = [[], [], []]
-            self.enData.ack_noDem = [[], [], []]
-
-            self.enData.up_demFailC1 = [[], [], []]
-            self.enData.up_demFailC2 = [[], [], []]
-
-            self.enData.up_noDemStrongest = [[], [], []]
-            self.enData.up_noDemEarly1 = [[], [], []]
-            self.enData.up_noDemEarly2 = [[], [], []]
-            self.enData.up_noDemFreeDem = [[], [], []]
-
-            self.enData.ack_demFailC1 = [[], [], []]
-            self.enData.ack_demFailC2 = [[], [], []]
-
-            self.enData.ack_noDemStrongest = [[], [], []]
-            self.enData.ack_noDemEarly1 = [[], [], []]
-            self.enData.ack_noDemEarly2 = [[], [], []]
-            self.enData.ack_noDemFreeDem = [[], [], []]
-            self.enData.fig1DataPack = [
-                self.enData.up_demSuccess,
-                self.enData.up_demFail,
-                self.enData.up_noDem,
-                self.enData.ack_demSuccess,
-                self.enData.ack_demFail,
-                self.enData.ack_noAck,
-                self.enData.ack_noDem,
-                self.enData.up_demFailC1,
-                self.enData.up_demFailC2,
-                self.enData.up_noDemStrongest,
-                self.enData.up_noDemEarly1,
-                self.enData.up_noDemEarly2,
-                self.enData.up_noDemFreeDem,
-                self.enData.ack_demFailC1,
-                self.enData.ack_demFailC2,
-                self.enData.ack_noDemStrongest,
-                self.enData.ack_noDemEarly1,
-                self.enData.ack_noDemEarly2,
-                self.enData.ack_noDemFreeDem,
-            ]
-
-
-
-
-            self.enData.up_sentNum_chsf = np.zeros((8, 6 + 7))
+        self.stop = True
 
 
 
 
 
-    class networkMonitor:
-        def __init__(self, env, loraEnv, data) -> None:
-            self.env = env
-            self.loraEnv = loraEnv
-            self.data = data
-            self.env.process(self.working(env))
-            self.monitoringCycle = 10 * second
-            self.index_time = [[], [], []]
 
-        def working(self, env):
-            fig1Temp = np.zeros((19, self.loraEnv.EN_num))
-
-            self.loraEnv.have_pbar = True
-            if self.loraEnv.have_pbar:
-
-                self.loraEnv.pbar = tqdm(
-                    total=self.loraEnv.runtime / self.monitoringCycle,
-                    position=self.loraEnv.position,
-                    dynamic_ncols=True,
-                )
-                pbar = self.loraEnv.pbar
-
-                self.loraEnv.group_log.append('root:{}'.format(self.loraEnv.root))
-
-            clean_count = 0
-            while not self.loraEnv.stop:
-                self.data.enData.up_sentNum_chsf.fill(0)
-
-                time_target = self.env.now / minute
-
-                # 记录网络运行了1/4,2/4,3/4,4/4时间后,的各项指标
-                t = self.env.now
-                if (
-                    (
-                        self.loraEnv.runtime / 4 - 5 * second <= t
-                        and t <= self.loraEnv.runtime / 4 + 5 * second
-                    )
-                    or (
-                        2 * self.loraEnv.runtime / 4 - 5 * second <= t
-                        and t <= 2 * self.loraEnv.runtime / 4 + 5 * second
-                    )
-                    or (
-                        3 * self.loraEnv.runtime / 4 - 5 * second <= t
-                        and t <= 3 * self.loraEnv.runtime / 4 + 5 * second
-                    )
-                ):
-                    self.index_time[0].append(self.data.enData.up_demSuccess[0][-1])
-                    self.index_time[1].append(self.data.enData.up_demFail[0][-1])
-                    self.index_time[2].append(self.data.enData.up_noDem[0][-1])
-                    gc.collect()
-                    th.cuda.empty_cache()
-
-                self.data.times.append(time_target)
-
-                for en in self.loraEnv.ENs:
-                    self.collectForFig1(en, fig1Temp, clean_count == 0)
-
-                self.calculateForFig1(
-                    self.data.enData.fig1DataPack,
-                    fig1Temp,
-                    clean_count == 0,
-                )
-
-                clean_count += 1
-
-                yield esp.extendTimeout(
-                    env, self.monitoringCycle, '', 'networkMonitor', ''
-                )
-                if self.loraEnv.have_pbar:
-
-                    pbar.set_description(
-                        '[{}] {:.2%}'.format(
-                            self.loraEnv.position,
-                            self.loraEnv.data.enData.up_demSuccess[0][-1],
-                        )
-                    )
-                    pbar.update(1)
-
-        def collectForFig1(self, en: EN, temp: np.ndarray, time_target):
-
-            if en.up_sentNum > 0:
-                temp[0, en.id] = en.up_demSuccess / en.up_sentNum
-                temp[1, en.id] = en.up_demFail / en.up_sentNum
-                temp[2, en.id] = en.up_noDem / en.up_sentNum
-            else:
-                temp[0:3, en.id].fill(0)
-
-            if en.up_demSuccess > 0:
-                temp[3, en.id] = en.ack_demSuccess / en.up_demSuccess
-                temp[4, en.id] = en.ack_demFail / en.up_demSuccess
-                temp[5, en.id] = en.ack_noAck / en.up_demSuccess
-                temp[6, en.id] = en.ack_noDem / en.up_demSuccess
-            else:
-                temp[3:7, en.id].fill(0)
-
-            if en.up_demFail > 0:
-                temp[7, en.id] = en.up_demFailC1 / en.up_demFail
-                temp[8, en.id] = en.up_demFailC2 / en.up_demFail
-            else:
-                temp[7:9, en.id].fill(0)
-
-            if en.up_noDem > 0:
-                temp[9, en.id] = en.up_noDemStrongest / en.up_noDem
-                temp[10, en.id] = en.up_noDemEarly1 / en.up_noDem
-                temp[11, en.id] = en.up_noDemEarly2 / en.up_noDem
-                temp[12, en.id] = en.up_noDemFreeDem / en.up_noDem
-            else:
-                temp[9:13, en.id].fill(0)
-
-            if en.ack_demFail > 0:
-                temp[13, en.id] = en.ack_demFailC1 / en.ack_demFail
-                temp[14, en.id] = en.ack_demFailC2 / en.ack_demFail
-            else:
-                temp[13:15, en.id].fill(0)
-
-            if en.ack_noDem > 0:
-                temp[15, en.id] = en.ack_noDemStrongest / en.ack_noDem
-                temp[16, en.id] = en.ack_noDemEarly1 / en.ack_noDem
-                temp[17, en.id] = en.ack_noDemEarly2 / en.ack_noDem
-                temp[18, en.id] = en.ack_noDemFreeDem / en.ack_noDem
-            else:
-                temp[15:19, en.id].fill(0)
-
-        def calculateForFig1(self, dataPack, temp: np.ndarray, time_target):
-            for i, data in enumerate(dataPack):
-                mean = temp[i].mean()
-                std = temp[i].std()
-                data[0].append(mean)
-                data[1].append(mean + std)
-                data[2].append(mean - std)
-
-    class networkPlotter:
-        def __init__(self, env, loraEnv, data) -> None:
-            self.env = env
-            self.loraEnv: LoRaEnv = loraEnv
-            self.data = data
-
-            # 对en划分ring
-            self.ENs_sorted = sorted(self.loraEnv.ENs, key=lambda en: en.distance0)
-            self.ringNum = 12
-            self.rings: list[list[EN]] = [[] for _ in range(self.ringNum)]
-            temp = int(self.loraEnv.EN_num / 12)
-            j = 0
-            for i in range(self.ringNum - 1):
-                for _ in range(temp):
-                    self.rings[i].append(self.ENs_sorted[j])
-                    j += 1
-            while j < self.loraEnv.EN_num:
-                self.rings[self.ringNum - 1].append(self.ENs_sorted[j])
-                j += 1
-            self.rings_x = [[en.x for en in ring] for ring in self.rings]
-            self.rings_y = [[en.y for en in ring] for ring in self.rings]
-
-            self.sf_color = {sf: getColor(sf - 7, -1, 1) for sf in range(7, 13)}
-            self.pow_lv_color = {lv: getColor(lv, -1, 1) for lv in range(8)}
-
-        def initData(self):
-            en_sf = {sf: [] for sf in range(7, 13)}
-            en_chsf = [{sf: [] for sf in range(7, 13)} for ch in range(8)]
-            for en in self.loraEnv.ENs:
-                en_sf[en.tx_sf].append(en)
-                en_chsf[en.tx_channel][en.tx_sf].append(en)
-
-            self.en_sf_x = {sf: [en.x for en in ens] for sf, ens in en_sf.items()}
-            self.en_sf_y = {sf: [en.y for en in ens] for sf, ens in en_sf.items()}
-            self.en_sf_ratio = {
-                sf: len(en_sf[sf]) / self.loraEnv.EN_num for sf in range(7, 13)
-            }
-
-            self.en_chsf_x = [
-                {sf: [en.x for en in ens] for sf, ens in en_chsf[ch].items()}
-                for ch in range(8)
-            ]
-            self.en_chsf_y = [
-                {sf: [en.y for en in ens] for sf, ens in en_chsf[ch].items()}
-                for ch in range(8)
-            ]
-            self.en_chsf_ratio = [{sf: 0.0 for sf in range(7, 13)} for ch in range(8)]
-            for ch in range(8):
-                s = 0
-                for sf in range(7, 13):
-                    s += len(en_chsf[ch][sf])
-                for sf in range(7, 13):
-                    if s == 0:
-                        self.en_chsf_ratio[ch][sf] = 0
-                    else:
-                        self.en_chsf_ratio[ch][sf] = len(en_chsf[ch][sf]) / s
-
-        def plotFig1(self):
-            data = self.data.enData
-
-            fig1 = make_subplots(
-                rows=2,
-                cols=3,
-                subplot_titles=[
-                    "total",
-                    'ack_demFail',
-                    'ack_noDem',
-                    "up_demSuccess",
-                    "up_demFail",
-                    "up_noDem",
-                ],
-                shared_xaxes=True,
-                shared_yaxes=True,
-                horizontal_spacing=0.02,
-                vertical_spacing=0.05,
-            )
-            fig1.add_traces(
-                rows=1,
-                cols=1,
-                data=[
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_demSuccess[0],
-                        name='up_demSuccess({:.1%})'.format(data.up_demSuccess[0][-1]),
-                        line=dict(color=getColor('green', -1, 1)),
-                        legendgroup='group1',
-                        legendgrouptitle_text='total',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_demSuccess[1] + data.up_demSuccess[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('green', -1, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_demFail[0],
-                        name='up_demFail({:.1%})'.format(data.up_demFail[0][-1]),
-                        line=dict(color=getColor('red', -1, 1)),
-                        legendgroup='group1',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_demFail[1] + data.up_demFail[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('red', -1, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_noDem[0],
-                        name='up_noDem({:.1%})'.format(data.up_noDem[0][-1]),
-                        line=dict(color=getColor('orange', -1, 1)),
-                        legendgroup='group1',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_noDem[1] + data.up_noDem[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('orange', -1, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                ],
-            )
-            fig1.add_traces(
-                rows=1,
-                cols=2,
-                data=[
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_demFailC1[0],
-                        name='ack_demFailC1({:.1%})'.format(data.ack_demFailC1[0][-1]),
-                        line=dict(color=getColor('pink', 2, 1)),
-                        legendgroup='group2',
-                        legendgrouptitle_text='ack_demFail',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_demFailC1[1] + data.ack_demFailC1[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('pink', 2, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_demFailC2[0],
-                        name='ack_demFailC2({:.1%})'.format(data.ack_demFailC2[0][-1]),
-                        line=dict(color=getColor('pink', 5, 1)),
-                        legendgroup='group2',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_demFailC2[1] + data.ack_demFailC2[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('pink', 5, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                ],
-            )
-            fig1.add_traces(
-                rows=1,
-                cols=3,
-                data=[
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_noDemStrongest[0],
-                        name='ack_noDemStrongest({:.1%})'.format(
-                            data.ack_noDemStrongest[0][-1]
-                        ),
-                        line=dict(color=getColor('blue', 3, 1)),
-                        legendgroup='group3',
-                        legendgrouptitle_text='ack_noDem',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_noDemStrongest[1] + data.ack_noDemStrongest[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('blue', 3, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_noDemEarly1[0],
-                        name='ack_noDemEarly1({:.1%})'.format(
-                            data.ack_noDemEarly1[0][-1]
-                        ),
-                        line=dict(color=getColor('blue', 7, 1)),
-                        legendgroup='group3',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_noDemEarly1[1] + data.ack_noDemEarly1[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('blue', 7, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_noDemEarly2[0],
-                        name='ack_noDemEarly2({:.1%})'.format(
-                            data.ack_noDemEarly2[0][-1]
-                        ),
-                        line=dict(color=getColor('blue', 11, 1)),
-                        legendgroup='group3',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_noDemEarly2[1] + data.ack_noDemEarly2[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('blue', 11, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_noDemFreeDem[0],
-                        name='ack_noDemFreeDem({:.1%})'.format(
-                            data.ack_noDemFreeDem[0][-1]
-                        ),
-                        line=dict(color=getColor('blue', 16, 1)),
-                        legendgroup='group3',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_noDemFreeDem[1] + data.ack_noDemFreeDem[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('blue', 16, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                ],
-            )
-            fig1.add_traces(
-                rows=2,
-                cols=1,
-                data=[
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_demSuccess[0],
-                        name='ack_demSuccess({:.1%})'.format(
-                            data.ack_demSuccess[0][-1]
-                        ),
-                        line=dict(color=getColor('green', 19, 1)),
-                        legendgroup='group4',
-                        legendgrouptitle_text='up_demSuccess',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_demSuccess[1] + data.ack_demSuccess[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('green', 19, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_demFail[0],
-                        name='ack_demFail({:.1%})'.format(data.ack_demFail[0][-1]),
-                        line=dict(color=getColor('green', 13, 1)),
-                        legendgroup='group4',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_demFail[1] + data.ack_demFail[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('green', 13, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_noAck[0],
-                        name='ack_noAck({:.1%})'.format(data.ack_noAck[0][-1]),
-                        line=dict(color=getColor('green', 7, 1)),
-                        legendgroup='group4',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_noAck[1] + data.ack_noAck[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('green', 7, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.ack_noDem[0],
-                        name='ack_noDem({:.1%})'.format(data.ack_noDem[0][-1]),
-                        line=dict(color=getColor('green', 1, 1)),
-                        legendgroup='group4',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.ack_noDem[1] + data.ack_noDem[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('green', 1, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                ],
-            )
-            fig1.add_traces(
-                rows=2,
-                cols=2,
-                data=[
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_demFailC1[0],
-                        name='up_demFailC1({:.1%})'.format(data.up_demFailC1[0][-1]),
-                        line=dict(color=getColor('red', 11, 1)),
-                        legendgroup='group5',
-                        legendgrouptitle_text='up_demFail',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_demFailC1[1] + data.up_demFailC1[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('red', 11, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_demFailC2[0],
-                        name='up_demFailC2({:.1%})'.format(data.up_demFailC2[0][-1]),
-                        line=dict(color=getColor('red', 14, 1)),
-                        legendgroup='group5',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_demFailC2[1] + data.up_demFailC2[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('red', 14, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                ],
-            )
-            fig1.add_traces(
-                rows=2,
-                cols=3,
-                data=[
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_noDemEarly1[0],
-                        name='up_noDemEarly1({:.1%})'.format(
-                            data.up_noDemEarly1[0][-1]
-                        ),
-                        line=dict(color=getColor('orange', 8, 1)),
-                        legendgroup='group6',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_noDemEarly1[1] + data.up_noDemEarly1[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('orange', 8, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_noDemEarly2[0],
-                        name='up_noDemEarly2({:.1%})'.format(
-                            data.up_noDemEarly2[0][-1]
-                        ),
-                        line=dict(color=getColor('orange', 13, 1)),
-                        legendgroup='group6',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_noDemEarly2[1] + data.up_noDemEarly2[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('orange', 13, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_noDemFreeDem[0],
-                        name='up_noDemFreeDem({:.1%})'.format(
-                            data.up_noDemFreeDem[0][-1]
-                        ),
-                        line=dict(color=getColor('orange', 18, 1)),
-                        legendgroup='group6',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_noDemFreeDem[1] + data.up_noDemFreeDem[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('orange', 18, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                    go.Scatter(
-                        x=self.data.times,
-                        y=data.up_noDemStrongest[0],
-                        name='up_noDemStrongest({:.1%})'.format(
-                            data.up_noDemStrongest[0][-1]
-                        ),
-                        line=dict(color=getColor('orange', 3, 1)),
-                        legendgroup='group6',
-                        legendgrouptitle_text='up_noDem',
-                    ),
-                    go.Scatter(
-                        x=self.data.times + self.data.times[::-1],
-                        y=data.up_noDemStrongest[1] + data.up_noDemStrongest[2][::-1],
-                        fill='toself',
-                        fillcolor=getColor('orange', 3, 0.2),
-                        line=dict(color='rgba(255,255,255,0)'),
-                        showlegend=False,
-                    ),
-                ],
-            )
-            fig1.update_yaxes(
-                row=1, col=1, tickmode='auto', nticks=10, tickformat='.1%'
-            )
-            fig1.update_yaxes(
-                row=1, col=2, tickmode='auto', nticks=10, tickformat='.1%'
-            )
-            fig1.update_yaxes(
-                row=1, col=3, tickmode='auto', nticks=10, tickformat='.1%'
-            )
-            fig1.update_yaxes(
-                row=2, col=1, tickmode='auto', nticks=10, tickformat='.1%'
-            )
-            fig1.update_yaxes(
-                row=2, col=2, tickmode='auto', nticks=10, tickformat='.1%'
-            )
-            fig1.update_yaxes(
-                row=2, col=3, tickmode='auto', nticks=10, tickformat='.1%'
-            )
-
-            fig1.update_xaxes(row=1, col=1, tickmode='auto', nticks=10)
-            fig1.update_xaxes(row=1, col=2, tickmode='auto', nticks=10)
-            fig1.update_xaxes(row=1, col=3, tickmode='auto', nticks=10)
-            fig1.update_xaxes(
-                row=2, col=1, tickmode='auto', nticks=10, title_text='runtime(minute)'
-            )
-            fig1.update_xaxes(
-                row=2, col=2, tickmode='auto', nticks=10, title_text='runtime(minute)'
-            )
-            fig1.update_xaxes(
-                row=2, col=3, tickmode='auto', nticks=10, title_text='runtime(minute)'
-            )
-            sentNum = data.up_sentNum_chsf.sum()
-            fig1.update_layout(
-                autosize=True,
-                margin={'l': 20, 'r': 20, 't': 100, 'b': 20},
-                title=dict(
-                    text='packetNum: {:.0f}   packetRate: {:.5f} num/sec'.format(
-                        sentNum, (sentNum * second) / self.loraEnv.runtime
-                    ),
-                    x=0.5,
-                    xanchor='center',
-                    font_size=30,
-                ),
-                height=900,
-                width=1800,
-                font_size=18,
-            )
-            fig1.update_annotations(font=dict(size=25))  # 更新子图的标题大小
-            filename = self.loraEnv.root + 'img_EN/'
-            createFile(filename)
-            fig1.write_image(filename + 'fig1_index(pacNum,accu,line).png', scale=2)
-            # fig1.write_html(filename + '/fig1.html')
 
     # 关闭资源
     def close(self):
